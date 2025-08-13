@@ -1,0 +1,16 @@
+# MT5 CFD Trading Requirements
+# Additional packages needed for CFD trading functionality
+
+# Core MT5 package
+MetaTrader5>=5.0.45
+
+# Data analysis (if not already installed)
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Optional: Technical analysis
+TA-Lib>=0.4.24
+
+# Optional: Advanced charting
+matplotlib>=3.4.0
+plotly>=5.0.0

@@ -1,0 +1,78 @@
+name: Deriv Telegram Bot CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, "3.10", "3.11"]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov
+    
+    - name: Run tests
+      run: |
+        python tests/test_suite.py
+        pytest tests/ -v --cov=src
+    
+    - name: Test bot import
+      run: |
+        python -c "import telegram_bot; print('Bot import successful')"
+    
+    - name: Code style check
+      run: |
+        pip install flake8 black
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        black --check .
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run security checks
+      run: |
+        pip install bandit safety
+        bandit -r . -f json -o bandit-report.json || true
+        safety check --json --output safety-report.json || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t deriv-telegram-bot:latest .
+    
+    - name: Test Docker image
+      run: |
+        docker run --rm deriv-telegram-bot:latest python -c "import telegram_bot; print('Docker test passed')"
