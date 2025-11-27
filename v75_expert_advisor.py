@@ -417,7 +417,7 @@ class V75ExpertAdvisor:
         now = datetime.now()
         
         # Reset hourly counter if needed
-        if (now - self.last_hour_reset).seconds >= 3600:
+        if (now - self.last_hour_reset).total_seconds() >= 3600:
             self.trades_this_hour = 0
             self.last_hour_reset = now
         
@@ -440,8 +440,7 @@ class V75ExpertAdvisor:
     def _check_risk_limits(self) -> bool:
         """Check if we're within risk limits"""
         # Check daily loss limit
-        daily_loss_percent = (abs(self.stats.daily_loss) / 
-                             self.stats.start_balance * 100 
+        daily_loss_percent = ((abs(self.stats.daily_loss) / self.stats.start_balance) * 100 
                              if self.stats.start_balance > 0 else 0)
         if daily_loss_percent >= self.config.max_daily_loss_percent:
             logger.warning("Daily loss limit reached")
@@ -809,7 +808,7 @@ class V75ExpertAdvisor:
                     "type": contract_type,
                     "amount": amount,
                     "entry_time": datetime.now(),
-                    "entry_price": response["buy"].get("start_time")
+                    "entry_price": response["buy"].get("buy_price", response["buy"].get("start_time"))
                 }
                 self.open_trades.append(trade_info)
                 
@@ -853,8 +852,8 @@ class V75ExpertAdvisor:
         
         # Update drawdown
         if self.stats.start_balance > 0:
-            current_dd = (self.stats.start_balance - self.stats.current_balance) / \
-                        self.stats.start_balance * 100
+            current_dd = ((self.stats.start_balance - self.stats.current_balance) / 
+                         self.stats.start_balance) * 100
             self.stats.max_drawdown = max(self.stats.max_drawdown, current_dd)
     
     def reset_daily_stats(self):
@@ -973,37 +972,38 @@ class V75EAManager:
         if not ea:
             return
         
-        while ea.is_active:
-            try:
-                # Create event loop for this thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                # Get current price
-                loop.run_until_complete(self._update_ea_price(ea))
-                
-                # Check for trading signals if we have enough data
-                if len(ea.price_history) >= ea.config.ema_slow_period:
-                    call_signal = loop.run_until_complete(ea.should_buy_call())
-                    put_signal = loop.run_until_complete(ea.should_buy_put())
+        # Create event loop once for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            while ea.is_active:
+                try:
+                    # Get current price
+                    loop.run_until_complete(self._update_ea_price(ea))
                     
-                    if call_signal:
-                        loop.run_until_complete(
-                            ea.place_trade("CALL", ea.config.lot_size)
-                        )
-                    elif put_signal:
-                        loop.run_until_complete(
-                            ea.place_trade("PUT", ea.config.lot_size)
-                        )
-                
-                loop.close()
-                
-                # Sleep between checks
-                time.sleep(5)
-                
-            except Exception as e:
-                logger.error(f"EA monitoring error for user {user_id}: {e}")
-                time.sleep(10)
+                    # Check for trading signals if we have enough data
+                    if len(ea.price_history) >= ea.config.ema_slow_period:
+                        call_signal = loop.run_until_complete(ea.should_buy_call())
+                        put_signal = loop.run_until_complete(ea.should_buy_put())
+                        
+                        if call_signal:
+                            loop.run_until_complete(
+                                ea.place_trade("CALL", ea.config.lot_size)
+                            )
+                        elif put_signal:
+                            loop.run_until_complete(
+                                ea.place_trade("PUT", ea.config.lot_size)
+                            )
+                    
+                    # Sleep between checks
+                    time.sleep(5)
+                    
+                except Exception as e:
+                    logger.error(f"EA monitoring error for user {user_id}: {e}")
+                    time.sleep(10)
+        finally:
+            loop.close()
     
     async def _update_ea_price(self, ea: V75ExpertAdvisor):
         """Update price data for an EA"""
