@@ -117,6 +117,9 @@ class Volatility75ScalpingStrategy:
         """
         Place a trade using the Deriv API
         
+        Note: This method is implemented here for modularity, allowing this strategy
+        to be used independently of the telegram_bot module's TradingStrategy class.
+        
         Args:
             contract_type: "CALL" or "PUT"
             amount: Trade amount in account currency

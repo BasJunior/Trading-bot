@@ -37,26 +37,31 @@ class StepSystemUtilities:
     """
     
     @staticmethod
-    def calculate_ema(prices: List[float], period: int = 20) -> Optional[np.ndarray]:
+    def calculate_ema(prices, period: int = 20) -> Optional[np.ndarray]:
         """
         Calculate Exponential Moving Average
         
         Args:
-            prices: List of price values
+            prices: List of price values or numpy array
             period: EMA period (default 20)
             
         Returns:
             numpy array of EMA values or None if insufficient data
         """
-        if len(prices) < period:
+        # Convert to numpy array if needed
+        if isinstance(prices, list):
+            prices_arr = np.array(prices, dtype=float)
+        else:
+            prices_arr = np.asarray(prices, dtype=float)
+        
+        if len(prices_arr) < period:
             return None
         
         try:
             import talib as ta
-            return ta.EMA(np.array(prices, dtype=float), timeperiod=period)
+            return ta.EMA(prices_arr, timeperiod=period)
         except ImportError:
             # Fallback calculation without TA-Lib
-            prices_arr = np.array(prices, dtype=float)
             ema = np.zeros(len(prices_arr))
             multiplier = 2 / (period + 1)
             
@@ -181,8 +186,8 @@ class StepSystemUtilities:
             
             macd_line = fast_ema - slow_ema
             
-            # Calculate signal line as EMA of MACD line
-            signal_line = StepSystemUtilities.calculate_ema(macd_line.tolist(), signal_period)
+            # Calculate signal line as EMA of MACD line (pass numpy array directly)
+            signal_line = StepSystemUtilities.calculate_ema(macd_line, signal_period)
             
             if signal_line is None:
                 return None, None, None
@@ -323,7 +328,11 @@ def validate_trading_parameters(symbol: str, lot_size: float, max_lot_size: floa
     if not any(symbol.startswith(prefix) for prefix in valid_prefixes):
         return False, f"Invalid symbol: {symbol}. Must start with one of {valid_prefixes}"
     
-    # Validate lot size
+    # Validate lot size is positive
+    if lot_size <= 0:
+        return False, f"Lot size must be positive: {lot_size}"
+    
+    # Validate lot size bounds
     if lot_size < min_lot_size:
         return False, f"Lot size too small: {lot_size}. Minimum is {min_lot_size}"
     

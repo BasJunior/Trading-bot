@@ -112,8 +112,16 @@ class TestTradingStrategies:
         try:
             from telegram_bot import StrategyManager
             assert StrategyManager is not None
-        except (ImportError, AttributeError, ValueError, SystemExit):
-            pytest.skip("Strategy manager not available (requires TELEGRAM_BOT_TOKEN)")
+        except (ImportError, AttributeError):
+            pytest.skip("Strategy manager not available")
+        except ValueError as e:
+            # Config validation error when TELEGRAM_BOT_TOKEN is missing
+            if "TELEGRAM_BOT_TOKEN" in str(e):
+                pytest.skip("Strategy manager not available (TELEGRAM_BOT_TOKEN not set)")
+            raise
+        except SystemExit:
+            # telegram_bot.py calls exit(1) when config validation fails
+            pytest.skip("Strategy manager not available (configuration error on import)")
     
     def test_step_system_utilities_import(self):
         """Test step system utilities import"""
@@ -175,6 +183,14 @@ class TestTradingStrategies:
             
             # Lot size too small
             is_valid, msg = validate_trading_parameters("R_75", 0.0001)
+            assert not is_valid
+            
+            # Negative lot size
+            is_valid, msg = validate_trading_parameters("R_75", -1.0)
+            assert not is_valid
+            
+            # Zero lot size
+            is_valid, msg = validate_trading_parameters("R_75", 0)
             assert not is_valid
         except ImportError:
             pytest.skip("Trading utilities module not available")
