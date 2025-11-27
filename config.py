@@ -83,5 +83,24 @@ class Config:
                 'macd_fast': 12,
                 'macd_slow': 26,
                 'macd_signal': 9
+            },
+            'v75_scalping': {
+                'lot_size': 0.5,
+                'duration': 5,
+                'ema_period': 10,
+                'rsi_period': 7,
+                'rsi_overbought': 75,
+                'rsi_oversold': 25,
+                'description': 'V75-optimized scalping with faster signals'
+            },
+            'v75_swing': {
+                'lot_size': 0.001,
+                'duration': 10,
+                'bb_period': 20,
+                'bb_std_dev': 2,
+                'macd_fast': 12,
+                'macd_slow': 26,
+                'macd_signal': 9,
+                'description': 'Swing trading optimized for V75 trends'
             }
         }
