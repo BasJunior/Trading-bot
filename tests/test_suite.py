@@ -112,8 +112,87 @@ class TestTradingStrategies:
         try:
             from telegram_bot import StrategyManager
             assert StrategyManager is not None
-        except (ImportError, AttributeError):
-            pytest.skip("Strategy manager not available")
+        except (ImportError, AttributeError, ValueError, SystemExit):
+            pytest.skip("Strategy manager not available (requires TELEGRAM_BOT_TOKEN)")
+    
+    def test_step_system_utilities_import(self):
+        """Test step system utilities import"""
+        try:
+            from src.trading.utilities import StepSystemUtilities
+            assert StepSystemUtilities is not None
+        except ImportError:
+            pytest.skip("Trading utilities module not available")
+    
+    def test_volatility75_scalping_strategy_import(self):
+        """Test Volatility75ScalpingStrategy import"""
+        try:
+            from src.trading.strategies import Volatility75ScalpingStrategy
+            assert Volatility75ScalpingStrategy is not None
+        except ImportError:
+            pytest.skip("Trading strategies module not available")
+    
+    def test_step_signal_calculation(self):
+        """Test step signal calculation"""
+        try:
+            from src.trading.utilities import calculate_step_signal, TradingSignal
+            
+            # Test with sample prices
+            prices = [100.0 + i * 0.1 for i in range(30)]
+            result = calculate_step_signal(prices)
+            
+            assert result is not None
+            assert result.signal in [TradingSignal.BUY, TradingSignal.SELL, TradingSignal.HOLD]
+        except ImportError:
+            pytest.skip("Trading utilities module not available")
+    
+    def test_volatility_signal_calculation(self):
+        """Test volatility signal calculation uses same model as step"""
+        try:
+            from src.trading.utilities import calculate_step_signal, calculate_volatility_signal
+            
+            # Both functions should use the same underlying logic
+            prices = [100.0 + i * 0.1 for i in range(30)]
+            step_result = calculate_step_signal(prices)
+            vol_result = calculate_volatility_signal(prices)
+            
+            # Results should be identical since they use the same model
+            assert step_result.signal == vol_result.signal
+        except ImportError:
+            pytest.skip("Trading utilities module not available")
+    
+    def test_validate_trading_parameters(self):
+        """Test trading parameter validation"""
+        try:
+            from src.trading.utilities import validate_trading_parameters
+            
+            # Valid parameters
+            is_valid, msg = validate_trading_parameters("R_75", 1.0)
+            assert is_valid
+            
+            # Invalid symbol
+            is_valid, msg = validate_trading_parameters("INVALID", 1.0)
+            assert not is_valid
+            
+            # Lot size too small
+            is_valid, msg = validate_trading_parameters("R_75", 0.0001)
+            assert not is_valid
+        except ImportError:
+            pytest.skip("Trading utilities module not available")
+    
+    def test_get_recommended_lot_sizes(self):
+        """Test recommended lot sizes"""
+        try:
+            from src.trading.utilities import get_recommended_lot_sizes
+            
+            # Scalping lots
+            scalping_lots = get_recommended_lot_sizes("scalping")
+            assert len(scalping_lots) > 0
+            
+            # Swing lots
+            swing_lots = get_recommended_lot_sizes("swing")
+            assert len(swing_lots) > 0
+        except ImportError:
+            pytest.skip("Trading utilities module not available")
 
 class TestSecurityFeatures:
     """Test security and validation features"""

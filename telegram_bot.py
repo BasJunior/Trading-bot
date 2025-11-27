@@ -29,6 +29,21 @@ load_dotenv()
 from config import Config
 from connection_manager_fixed import get_connection_manager
 
+# Import trading utilities and strategies
+try:
+    from src.trading.utilities import (
+        StepSystemUtilities,
+        calculate_step_signal,
+        calculate_volatility_signal,
+        validate_trading_parameters,
+        get_recommended_lot_sizes,
+    )
+    from src.trading.strategies import Volatility75ScalpingStrategy
+    TRADING_MODULE_AVAILABLE = True
+except ImportError:
+    TRADING_MODULE_AVAILABLE = False
+    print("⚠️ Trading module not available, using built-in strategies")
+
 # Validate configuration
 try:
     Config.validate()
@@ -398,6 +413,13 @@ class StrategyManager:
             strategy = StepIndex100ScalpingStrategy(user_id, user_api)
         elif strategy_name == "v75_swing":
             strategy = Volatility75SwingStrategy(user_id, user_api)
+        elif strategy_name == "v75_scalping":
+            # Use the new Volatility75ScalpingStrategy if available
+            if TRADING_MODULE_AVAILABLE:
+                strategy = Volatility75ScalpingStrategy(user_id, user_api, "R_75")
+            else:
+                # Fallback to custom scalping strategy
+                strategy = CustomScalpingStrategy(user_id, "R_75", user_api, 1.0)
         else:
             return False
         
@@ -729,6 +751,7 @@ Quick access to all features:
 
 **Strategy Commands:**
 • /strategy start step_scalping - Start Step Index 100 scalping
+• /strategy start v75_scalping - Start Volatility 75 scalping
 • /strategy start v75_swing - Start Volatility 75 swing trading
 • /strategy stop - Stop all strategies
 • /strategy status - Check strategy status
@@ -1167,15 +1190,17 @@ Quick access to all features:
 📊 **Status:** {active_count} active strategies
 
 **Available Strategies:**
-• 🎯 Scalping Strategy (EMA + RSI)
-• 📈 Swing Trading (Bollinger + MACD)
+• 🎯 Step Index Scalping (EMA + RSI)
+• 📈 V75 Scalping (EMA + RSI) - Same model as Step Index
+• 📉 V75 Swing Trading (Bollinger + MACD)
 
 **Select a strategy to start:**
         """
         
         keyboard = [
-            [InlineKeyboardButton("🎯 Start Scalping", callback_data="start_strategy_scalping")],
-            [InlineKeyboardButton("📈 Start Swing Trading", callback_data="start_strategy_swing")],
+            [InlineKeyboardButton("🎯 Step Index Scalping", callback_data="start_strategy_scalping")],
+            [InlineKeyboardButton("📈 V75 Scalping", callback_data="start_strategy_v75scalping")],
+            [InlineKeyboardButton("📉 V75 Swing Trading", callback_data="start_strategy_swing")],
             [InlineKeyboardButton("📊 Strategy Status", callback_data="strategy_status")],
             [InlineKeyboardButton("🛑 Stop All Strategies", callback_data="stop_all_strategies")],
             [InlineKeyboardButton("🔙 Back to Main", callback_data="back_to_main")]
@@ -1186,28 +1211,42 @@ Quick access to all features:
     
     async def handle_strategy_selection(self, query):
         """Handle strategy selection"""
-        strategy_type = query.data.split("_")[-1]  # scalping or swing
+        strategy_type = query.data.split("_")[-1]  # scalping, v75scalping, or swing
         
         if strategy_type == "scalping":
             menu_text = """
-🎯 **Scalping Strategy Setup**
+🎯 **Step Index Scalping Strategy Setup**
 
 **Method:** EMA + RSI signals
-**Best for:** Quick profits on volatility
+**Best for:** Quick profits on Step Index volatility
 
 **Select Market:**
             """
             keyboard = [
-                [InlineKeyboardButton("📊 Volatility 75 (R_75)", callback_data="market_scalping_R_75")],
-                [InlineKeyboardButton("📊 Volatility 100 (R_100)", callback_data="market_scalping_R_100")],
-                [InlineKeyboardButton("📊 Volatility 50 (R_50)", callback_data="market_scalping_R_50")],
-                [InlineKeyboardButton("💥 Boom 500", callback_data="market_scalping_BOOM500")],
-                [InlineKeyboardButton("💥 Boom 1000", callback_data="market_scalping_BOOM1000")],
+                [InlineKeyboardButton("📊 Step Index 100 (STEP_100)", callback_data="market_scalping_STEP_100")],
+                [InlineKeyboardButton("📊 Step Index 200 (STEP_200)", callback_data="market_scalping_STEP_200")],
+                [InlineKeyboardButton("📊 Step Index 500 (STEP_500)", callback_data="market_scalping_STEP_500")],
+                [InlineKeyboardButton("🔙 Back", callback_data="back_to_auto_trading")]
+            ]
+        elif strategy_type == "v75scalping":
+            menu_text = """
+📈 **Volatility 75 Scalping Strategy Setup**
+
+**Method:** EMA + RSI signals (Same model as Step Index)
+**Best for:** Quick profits on Volatility Index
+
+**Select Market:**
+            """
+            keyboard = [
+                [InlineKeyboardButton("📊 Volatility 75 (R_75)", callback_data="market_v75scalping_R_75")],
+                [InlineKeyboardButton("📊 Volatility 100 (R_100)", callback_data="market_v75scalping_R_100")],
+                [InlineKeyboardButton("📊 Volatility 50 (R_50)", callback_data="market_v75scalping_R_50")],
+                [InlineKeyboardButton("📊 Volatility 25 (R_25)", callback_data="market_v75scalping_R_25")],
                 [InlineKeyboardButton("🔙 Back", callback_data="back_to_auto_trading")]
             ]
         else:  # swing
             menu_text = """
-📈 **Swing Trading Setup**
+📉 **Swing Trading Setup**
 
 **Method:** Bollinger Bands + MACD
 **Best for:** Trend following
@@ -1895,8 +1934,15 @@ Choose market and trade type:
             user_api = self.get_user_api(user_id)
             
             if strategy_type == "scalping":
-                # Create custom scalping strategy
+                # Create custom scalping strategy for Step Index
                 strategy = CustomScalpingStrategy(user_id, market, user_api, lot_size)
+            elif strategy_type == "v75scalping":
+                # Create Volatility 75 scalping strategy (same model as Step Index)
+                if TRADING_MODULE_AVAILABLE:
+                    strategy = Volatility75ScalpingStrategy(user_id, user_api, market)
+                else:
+                    # Fallback to custom scalping strategy
+                    strategy = CustomScalpingStrategy(user_id, market, user_api, lot_size)
             elif strategy_type == "swing":
                 # Create custom swing strategy  
                 strategy = CustomSwingStrategy(user_id, market, user_api, lot_size)
