@@ -193,6 +193,70 @@ class StepIndex100ScalpingStrategy(TradingStrategy):
         # Buy PUT if price is below EMA and RSI is overbought
         return current_price < current_ema and current_rsi > self.rsi_overbought
 
+class Volatility75ScalpingStrategy(TradingStrategy):
+    """Volatility 75 (V75) scalping strategy using EMA + RSI optimized for high volatility"""
+    
+    def __init__(self, user_id: int, user_api: DerivAPI):
+        super().__init__(user_id, "R_75", user_api)
+        # V75-optimized parameters for scalping
+        self.ema_period = 10  # Shorter EMA for faster signals on V75
+        self.rsi_period = 7   # Shorter RSI for quicker response
+        self.rsi_overbought = 75  # Higher threshold due to V75 volatility
+        self.rsi_oversold = 25    # Lower threshold due to V75 volatility
+        self.lot_size = 0.5  # Default lot size for V75 scalping
+        
+    async def should_buy_call(self) -> bool:
+        """Buy CALL when price is above EMA and RSI is oversold (bounce expected)"""
+        if len(self.price_history) < max(self.ema_period, self.rsi_period):
+            return False
+            
+        prices = list(self.price_history)
+        current_price = prices[-1]
+        
+        # Calculate EMA
+        ema = self.indicators.calculate_ema(prices, self.ema_period)
+        if ema is None:
+            return False
+        current_ema = ema[-1]
+        
+        # Calculate RSI
+        rsi = self.indicators.calculate_rsi(prices, self.rsi_period)
+        if rsi is None:
+            return False
+        current_rsi = rsi[-1]
+        
+        # Buy CALL if price is above EMA and RSI is oversold
+        return current_price > current_ema and current_rsi < self.rsi_oversold
+    
+    async def should_buy_put(self) -> bool:
+        """Buy PUT when price is below EMA and RSI is overbought (drop expected)"""
+        if len(self.price_history) < max(self.ema_period, self.rsi_period):
+            return False
+            
+        prices = list(self.price_history)
+        current_price = prices[-1]
+        
+        # Calculate EMA
+        ema = self.indicators.calculate_ema(prices, self.ema_period)
+        if ema is None:
+            return False
+        current_ema = ema[-1]
+        
+        # Calculate RSI
+        rsi = self.indicators.calculate_rsi(prices, self.rsi_period)
+        if rsi is None:
+            return False
+        current_rsi = rsi[-1]
+        
+        # Buy PUT if price is below EMA and RSI is overbought
+        return current_price < current_ema and current_rsi > self.rsi_overbought
+    
+    async def place_trade(self, contract_type: str, amount: float = None, duration: int = 5):
+        """Place a trade with V75-specific lot size"""
+        if amount is None:
+            amount = self.lot_size
+        return await super().place_trade(contract_type, amount, duration)
+
 class Volatility75SwingStrategy(TradingStrategy):
     """Volatility 75 swing strategy using Bollinger Bands + MACD"""
     
@@ -396,6 +460,8 @@ class StrategyManager:
         # Create strategy instance
         if strategy_name == "step_scalping":
             strategy = StepIndex100ScalpingStrategy(user_id, user_api)
+        elif strategy_name == "v75_scalping":
+            strategy = Volatility75ScalpingStrategy(user_id, user_api)
         elif strategy_name == "v75_swing":
             strategy = Volatility75SwingStrategy(user_id, user_api)
         else:
@@ -1067,6 +1133,8 @@ Email: {balance.get('email', 'N/A')}
                 await self.handle_market_selection(query)
             elif query.data.startswith("lot_"):
                 await self.handle_lot_selection(query)
+            elif query.data.startswith("v75lot_"):
+                await self.handle_v75_lot_selection(query)
             elif query.data.startswith("price_"):
                 await self.handle_price_request(query)
             elif query.data.startswith("stream_"):
@@ -1169,6 +1237,7 @@ Quick access to all features:
 **Available Strategies:**
 • 🎯 Scalping Strategy (EMA + RSI)
 • 📈 Swing Trading (Bollinger + MACD)
+• ⚡ V75 Scalping (V75-optimized scalping)
 
 **Select a strategy to start:**
         """
@@ -1176,6 +1245,7 @@ Quick access to all features:
         keyboard = [
             [InlineKeyboardButton("🎯 Start Scalping", callback_data="start_strategy_scalping")],
             [InlineKeyboardButton("📈 Start Swing Trading", callback_data="start_strategy_swing")],
+            [InlineKeyboardButton("⚡ V75 Scalping", callback_data="start_strategy_v75scalp")],
             [InlineKeyboardButton("📊 Strategy Status", callback_data="strategy_status")],
             [InlineKeyboardButton("🛑 Stop All Strategies", callback_data="stop_all_strategies")],
             [InlineKeyboardButton("🔙 Back to Main", callback_data="back_to_main")]
@@ -1186,9 +1256,33 @@ Quick access to all features:
     
     async def handle_strategy_selection(self, query):
         """Handle strategy selection"""
-        strategy_type = query.data.split("_")[-1]  # scalping or swing
+        strategy_type = query.data.split("_")[-1]  # scalping, swing, or v75scalp
         
-        if strategy_type == "scalping":
+        if strategy_type == "v75scalp":
+            # Direct V75 scalping - skip market selection since it's V75-specific
+            menu_text = """
+⚡ **V75 Scalping Strategy Setup**
+
+**Method:** V75-optimized EMA + RSI
+**Market:** Volatility 75 Index (R_75)
+**Best for:** Quick profits on V75 high volatility
+
+**Features:**
+• Shorter EMA (10) for faster signals
+• Optimized RSI (7) for V75 volatility
+• Higher overbought/oversold thresholds
+
+**Select Lot Size:**
+            """
+            keyboard = [
+                [InlineKeyboardButton("$0.1", callback_data="v75lot_0.1")],
+                [InlineKeyboardButton("$0.5", callback_data="v75lot_0.5")],
+                [InlineKeyboardButton("$1.0", callback_data="v75lot_1.0")],
+                [InlineKeyboardButton("$2.0", callback_data="v75lot_2.0")],
+                [InlineKeyboardButton("$5.0", callback_data="v75lot_5.0")],
+                [InlineKeyboardButton("🔙 Back", callback_data="back_to_auto_trading")]
+            ]
+        elif strategy_type == "scalping":
             menu_text = """
 🎯 **Scalping Strategy Setup**
 
@@ -1328,6 +1422,52 @@ Quick access to all features:
             await query.edit_message_text(success_message, reply_markup=reply_markup, parse_mode='Markdown')
         else:
             await query.edit_message_text("❌ Failed to start strategy. Please try again.", 
+                                        reply_markup=InlineKeyboardMarkup([
+                                            [InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_auto_trading")]
+                                        ]))
+    
+    async def handle_v75_lot_selection(self, query):
+        """Handle V75-specific lot size selection and start V75 scalping strategy"""
+        user_id = query.from_user.id
+        lot_size = float(query.data.split("_")[1])
+        
+        await query.edit_message_text(f"🔄 Starting V75 Scalping strategy with ${lot_size} lot size...")
+        
+        # Start the V75 scalping strategy
+        success = await self.start_v75_scalping_strategy(user_id, lot_size)
+        
+        if success:
+            success_message = f"""
+✅ **V75 Scalping Strategy Started!**
+
+📊 **Strategy Details:**
+• Type: V75 Scalping (Optimized)
+• Market: Volatility 75 Index (R_75)
+• Lot Size: ${lot_size}
+• Status: 🟢 Running
+
+⚡ **V75 Optimizations:**
+• EMA Period: 10 (faster signals)
+• RSI Period: 7 (quick response)
+• Overbought: 75 / Oversold: 25
+
+🎯 **What's Next:**
+• Strategy will trade automatically
+• Monitor with Strategy Status
+• Check your balance regularly
+
+⚠️ **Important:** V75 is highly volatile. Only risk what you can afford to lose!
+            """
+            
+            keyboard = [
+                [InlineKeyboardButton("📊 Strategy Status", callback_data="strategy_status")],
+                [InlineKeyboardButton("🔙 Back to Auto Trading", callback_data="back_to_auto_trading")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(success_message, reply_markup=reply_markup, parse_mode='Markdown')
+        else:
+            await query.edit_message_text("❌ Failed to start V75 strategy. Please try again.", 
                                         reply_markup=InlineKeyboardMarkup([
                                             [InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_auto_trading")]
                                         ]))
@@ -1927,6 +2067,41 @@ Choose market and trade type:
             
         except Exception as e:
             logger.error(f"Failed to start custom strategy: {e}")
+            return False
+
+    async def start_v75_scalping_strategy(self, user_id: int, lot_size: float) -> bool:
+        """Start the V75-optimized scalping strategy"""
+        try:
+            user_api = self.get_user_api(user_id)
+            
+            # Create the V75 scalping strategy
+            strategy = Volatility75ScalpingStrategy(user_id, user_api)
+            strategy.lot_size = lot_size  # Set the lot size
+            
+            # Add to active strategies
+            if user_id not in self.strategy_manager.active_strategies:
+                self.strategy_manager.active_strategies[user_id] = {}
+            
+            strategy_key = "v75_scalping"
+            self.strategy_manager.active_strategies[user_id][strategy_key] = strategy
+            strategy.is_active = True
+            
+            # Start monitoring thread
+            thread = threading.Thread(
+                target=self.strategy_manager._run_strategy_monitoring, 
+                args=(user_id, strategy_key)
+            )
+            thread.daemon = True
+            thread.start()
+            
+            if user_id not in self.strategy_manager.strategy_threads:
+                self.strategy_manager.strategy_threads[user_id] = {}
+            self.strategy_manager.strategy_threads[user_id][strategy_key] = thread
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start V75 scalping strategy: {e}")
             return False
 
     async def show_connect_menu(self, query):
